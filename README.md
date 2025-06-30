@@ -5,7 +5,7 @@ All Releases: [Releases](/../../releases)
 ### Preface
 Whenever realthunder publish a new release of his version of FreeCAD (see: [here](https://github.com/realthunder/FreeCAD/releases)), this repository will build a new AppImage that Adjust path inside "${USER_CFG}" to current mount path
 
-There is a similar Repo that uses realthunder's Version of FreeCAD (see: [here](https://github.com/gneiss15/FreeCAD.AppImage)).
+There is a similar Repo that uses FreeCAD's Version of FreeCAD (see: [here](https://github.com/gneiss15/FreeCAD.AppImage)).
 ### Using
 - Copy the files inside subfolder "ForPenDrive" to a Dir an Your PenDrive.
 - Copy an AppImage (from Releases) into the same Dir.
