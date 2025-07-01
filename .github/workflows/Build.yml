@@ -55,7 +55,7 @@ jobs:
         VERSION=$(head -1 <<< "$(comm -23 Link.Releases This.Releases)")
         rm -f "./Link.Releases" "./This.Releases"
         
-        if [ -z "${VERSION}" ]; then
+        if [[ -z "${VERSION}" ]]; then
           echo "No new release found. Skipping rest of workflow."
           echo "skip=true" >> $GITHUB_OUTPUT
          else
@@ -92,7 +92,7 @@ jobs:
         # Upload to GitHub Releases
         list=$(gh release list -R "$GITHUB_REPOSITORY" --json tagName | jq -r 'map(select(true))[] | (.tagName)');
         for i in $list; do
-          if [ "$i" = "${VERSION}" ]; then
+          if [[ "$i" = "${VERSION}" ]]; then
             gh release delete $VERSION -y
           fi
         done
