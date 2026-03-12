@@ -38,21 +38,21 @@ jobs:
         #set -v
         GetReleases()
          {
-          list=$(gh release list -R "$1" --json tagName | jq -r 'map(select(true))[] | (.tagName)')
-          tmpfile=mktemp
-          touch $tmpfile
-          for i in $list; do
-            if [[ $i == *stable ]] && dpkg --compare-versions $i "ge" "20241003stable"; then
-              echo $i >>$tmpfile
-            fi
-          done
-          sort <$tmpfile >$2
-          rm -f $tmpfile
+          # Holt alle Releases, filtert nach Datum >= 2024-10-03 und sortiert sie chronologisch
+          gh release list -R "$1" --json tagName,publishedAt --limit 100 | \
+          jq -r 'sort_by(.publishedAt) | .[] | select(.publishedAt >= "2024-10-03T00:00:00Z") | .tagName' > "$2"
          }
-        
-        GetReleases "$LINK_REPO" "./Link.Releases"
-        GetReleases "$GITHUB_REPOSITORY" "./This.Releases"
-        VERSION=$(head -1 <<< "$(comm -23 Link.Releases This.Releases)")
+
+        # 1. Listen erzeugen
+        GetReleases "$LINK_REPO" "Link.Releases"
+        GetReleases "$GITHUB_REPOSITORY" "This.Releases"
+
+        # 2. Die Versionen finden, die im fremden Repo sind, aber nicht in meinem
+        NEW_VERSIONS=$(grep -vxFf This.Releases Link.Releases || true)
+
+        # 3. Die älteste "neue" Version nehmen (erste Zeile der Differenz)
+        VERSION=$(head -n 1 <<< "$NEW_VERSIONS")
+
         rm -f "./Link.Releases" "./This.Releases"
         
         if [[ -z "${VERSION}" ]]; then
