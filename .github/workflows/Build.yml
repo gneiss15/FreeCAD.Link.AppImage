@@ -134,8 +134,8 @@ jobs:
     - name: Build and Upload
       if: steps.Check_Releases.outputs.skip == 'false'
       run: |
-        set -x
-        set -v
+        #set -x
+        #set -v
 
         OUT_FILE="FreeCAD-Link-Stable-GN-${MY_TAG}.AppImage"
 
