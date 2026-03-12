@@ -152,5 +152,6 @@ jobs:
 
         # Erstelle Release (Löscht existierenden Tag falls vorhanden, z.B. bei Re-Runs)
         gh release delete "${MY_TAG}" -y --repo "$GITHUB_REPOSITORY" || true
-        gh release create "${MY_TAG}" "${OUT_FILE}" --title "FreeCAD Link ${MY_TAG}" --notes "Automated build from ${IN_FILE}" --clobber
+        gh release create "${MY_TAG}" "${OUT_FILE}" --title "FreeCAD Link ${MY_TAG}" --notes "Automated build from ${IN_FILE}"
+
 
