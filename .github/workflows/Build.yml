@@ -73,8 +73,8 @@ jobs:
     - name: Get FreeCAD AppImage
       if: steps.Check_Releases.outputs.skip == 'false'
       run: |
-        #set -x
-        #set -v
+        set -x
+        set -v
         
         IN_FILE=FreeCAD-Link-Stable-Linux-x86_64-py3.11-${RELEASE_TAG}.AppImage
         OUT_FILE=FreeCAD-Link-Stable-GN-${RELEASE_TAG}.AppImage
