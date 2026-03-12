@@ -31,69 +31,126 @@ jobs:
           echo "$i=$r" >> $GITHUB_ENV
         done
 
-    - name: Check Releases and Skip Rest of Job if no new release
+    - name: Check Assets and Skip if no new file
       id: Check_Releases
       run: |
         #set -x
         #set -v
-        GetReleases()
+
+        # 1. Datum deines letzten eigenen Releases holen
+        LATEST_RAW=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=1" | jq -r '.[0].published_at // empty')
+        # Falls keine Releases existieren (leer oder null), nutze den Standard-Stichtag
+        [[ -z "$LATEST_RAW" || "$LATEST_RAW" == "null" ]] && LATEST_RAW="2024-10-01T00:00:00Z"
+
+        # 2. Sicherheitsabstand: Ein Jahr zurückrechnen
+        START_DATE=$(date -d "$LATEST_RAW - 365 days" --iso-8601=seconds)
+        echo "--- SEARCH CONFIG ---"
+        echo "LATEST_RELEASE_DATE: $LATEST_RAW"
+        echo "START_DATE (with 1y buffer): $START_DATE"
+        echo "---------------------"
+
+        # 3. Funktionen mit dynamischem START_DATE
+        GetLinkFiles()
          {
-          # Holt alle Releases, filtert nach Datum >= 2024-10-03 und sortiert sie chronologisch
-          gh release list -R "$1" --json tagName,publishedAt --limit 100 | \
-          jq -r 'sort_by(.publishedAt) | .[] | select(.publishedAt >= "2024-10-03T00:00:00Z") | .tagName' > "$2"
+          gh api "repos/$1/releases?per_page=100" | \
+          jq -r --arg DATE "$START_DATE" 'sort_by(.published_at) | .[]
+                 | select(.published_at >= $DATE)
+                 | .assets[]
+                 | select(.name | (endswith(".AppImage")) and contains("Linux-x86_64") and (contains("Stable") or contains("Tip")))
+                 | .name' > "$2"
+         }
+
+        GetMyFiles()
+         {
+          gh api "repos/$1/releases?per_page=100" | \
+          jq -r --arg DATE "$START_DATE" 'sort_by(.published_at) | .[]
+                 | select(.published_at >= $DATE)
+                 | .assets[]
+                 | select(.name | endswith(".AppImage"))
+                 | .name' > "$2"
          }
 
         # 1. Listen erzeugen
-        GetReleases "$LINK_REPO" "Link.Releases"
-        GetReleases "$GITHUB_REPOSITORY" "This.Releases"
+        GetLinkFiles "$LINK_REPO" "Link.Files"
+        GetMyFiles "$GITHUB_REPOSITORY" "This.Files"
 
-        # 2. Die Versionen finden, die im fremden Repo sind, aber nicht in meinem
-        NEW_VERSIONS=$(grep -vxFf This.Releases Link.Releases || true)
+        # 2. Liste der offenen (noch nicht gebauten) Releases erstellen
+        MISSING_FILES=""
+        # Wir gehen die Liste der Originale durch
+        while read -r f; do
+          [[ -z "$f" ]] && continue
 
-        # 3. Die älteste "neue" Version nehmen (erste Zeile der Differenz)
-        VERSION=$(head -n 1 <<< "$NEW_VERSIONS")
+          # Extrahiere die ID/Datum (z.B. 20241003 oder 0.21.2)
+          # Wir nehmen alles nach dem letzten Bindestrich vor .AppImage
+          ID=$(echo "$f" | sed -E 's/.*-([^.-]+)\.AppImage$/\1/')
 
-        rm -f "./Link.Releases" "./This.Releases"
-        
-        if [[ -z "${VERSION}" ]]; then
-          echo "No new release found. Skipping rest of workflow."
+          # Prüfen, ob diese ID bereits in DEINEN Dateinamen vorkommt
+          if ! grep -q "$ID" This.Files; then
+            MISSING_FILES="${MISSING_FILES}${f}"$'\n'
+
+          fi
+        done < Link.Files
+
+        if [[ -z "${MISSING_FILES}" ]]; then
+          echo "No new AppImage found. Skipping."
           echo "skip=true" >> $GITHUB_OUTPUT
-         else
-          echo "RELEASE_TAG=${VERSION}" >> $GITHUB_ENV
-          echo "New release found: ${VERSION}"
+        else
+          echo "--- OPEN RELEASES ---"
+          echo "${MISSING_FILES}" | sed 's/^/- /'
+          echo "---------------------"
+
+          # Nimm das oberste (älteste) aus der Liste der Fehlenden
+          NEW_FILE=$(echo "${MISSING_FILES}" | head -n 1)
+
+          # Den korrekten Original-Tag zum File finden
+          RELEASE_TAG=$(gh api "repos/${LINK_REPO}/releases" | \
+                       jq -r --arg FILE "$NEW_FILE" '.[] | select(.assets[].name == $FILE) | .tag_name')
+
+          # MY_TAG festlegen (Datum bei Tip, sonst Tag-Name)
+          if [[ "$RELEASE_TAG" == "Tip" ]]; then
+             # Extrahiert das Datum (z.B. 20251015) aus dem Dateinamen
+             MY_TAG=$(echo "$NEW_FILE" | sed -E 's/.*-([0-9]{8})\.AppImage$/\1/')
+          else
+             MY_TAG="$RELEASE_TAG"
+          fi
+
+          echo "IN_FILE=${NEW_FILE}" >> $GITHUB_ENV
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_ENV
+          echo "MY_TAG=${MY_TAG}" >> $GITHUB_ENV
           echo "skip=false" >> $GITHUB_OUTPUT
+          echo "NEXT TO BUILD: ${NEW_FILE} (My Tag: ${MY_TAG})"
         fi
+
+        rm -f Link.Files This.Files
 
     - name: Clone this repository
       if: steps.Check_Releases.outputs.skip == 'false'
       uses: actions/checkout@v5
-      with:
-        ref: ${{ github.head_ref }}
+      #with:
+      #  ref: ${{ github.head_ref }}
 
-    - name: Get FreeCAD AppImage
+    - name: Build and Upload
       if: steps.Check_Releases.outputs.skip == 'false'
       run: |
         set -x
         set -v
-        
-        IN_FILE=FreeCAD-Link-Stable-Linux-x86_64-py3.11-${RELEASE_TAG}.AppImage
-        OUT_FILE=FreeCAD-Link-Stable-GN-${RELEASE_TAG}.AppImage
-        
-        wget -q https://github.com/realthunder/FreeCAD/releases/download/${RELEASE_TAG}/${IN_FILE}
-        chmod a+x ${IN_FILE}
-        ./${IN_FILE} --appimage-extract >/dev/null
-        cp ${TOOLS_DIR}/AppRun.Link squashfs-root/AppRun
+
+        OUT_FILE="FreeCAD-Link-Stable-GN-${MY_TAG}.AppImage"
+
+        wget -q "https://github.com/${LINK_REPO}/releases/download/${RELEASE_TAG}/${IN_FILE}"
+
+        chmod a+x "${IN_FILE}"
+        ./"${IN_FILE}" --appimage-extract >/dev/null
+
+        cp "${TOOLS_DIR}/AppRun.Link" squashfs-root/AppRun
         rm -f squashfs-root/usr/share/metainfo/org.freecadweb.FreeCAD.Link.appdata.xml
-        ARCH=x86_64 ${APPIMAGETOOL} squashfs-root/ ${OUT_FILE} >/dev/null
-        rm ${IN_FILE}
+
+        ARCH=x86_64 "${APPIMAGETOOL}" squashfs-root/ "${OUT_FILE}" >/dev/null
+
+        rm "${IN_FILE}"
         rm -rf squashfs-root
-        
-        # Upload to GitHub Releases
-        list=$(gh release list -R "$GITHUB_REPOSITORY" --json tagName | jq -r 'map(select(true))[] | (.tagName)');
-        for i in $list; do
-          if [[ "$i" = "${RELEASE_TAG}" ]]; then
-            gh release delete $RELEASE_TAG -y
-          fi
-        done
-        gh release create $RELEASE_TAG *.AppImage* --title "$RELEASE_TAG"
+
+        # Erstelle Release (Löscht existierenden Tag falls vorhanden, z.B. bei Re-Runs)
+        gh release delete "${MY_TAG}" -y --repo "$GITHUB_REPOSITORY" || true
+        gh release create "${MY_TAG}" "${OUT_FILE}" --title "FreeCAD Link ${MY_TAG}" --notes "Automated build from ${IN_FILE}" --clobber
 
