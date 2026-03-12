@@ -91,16 +91,18 @@ jobs:
           fi
         done < Link.Files
 
-        if [[ -z "${MISSING_FILES}" ]]; then
+        if [[ -z "${MISSING_FILES//[[:space:]]/}" ]]; then
           echo "No new AppImage found. Skipping."
           echo "skip=true" >> $GITHUB_OUTPUT
         else
           echo "--- OPEN RELEASES ---"
-          echo "${MISSING_FILES}" | sed 's/^/- /'
+          # grep . entfernt die Leerzeile vor der Anzeige
+          echo "${MISSING_FILES}" | grep . | sed 's/^/- /'
           echo "---------------------"
 
           # Nimm das oberste (älteste) aus der Liste der Fehlenden
-          NEW_FILE=$(echo "${MISSING_FILES}" | head -n 1)
+          # grep . stellt sicher, dass NEW_FILE niemals leer ist
+          NEW_FILE=$(echo "${MISSING_FILES}" | grep . | head -n 1)
 
           # Den korrekten Original-Tag zum File finden
           RELEASE_TAG=$(gh api "repos/${LINK_REPO}/releases" | \
