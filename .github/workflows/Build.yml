@@ -127,9 +127,9 @@ jobs:
 
     - name: Clone this repository
       if: steps.Check_Releases.outputs.skip == 'false'
-      uses: actions/checkout@v5
-      #with:
-      #  ref: ${{ github.head_ref }}
+      uses: actions/checkout@v6
+      with:
+        ref: ${{ github.head_ref }}
 
     - name: Build and Upload
       if: steps.Check_Releases.outputs.skip == 'false'
