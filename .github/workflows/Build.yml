@@ -127,7 +127,7 @@ jobs:
 
     - name: Clone this repository
       if: steps.Check_Releases.outputs.skip == 'false'
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         ref: ${{ github.head_ref }}
 
